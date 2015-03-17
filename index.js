@@ -4,53 +4,44 @@ var opts;
 var file_path = '';
 var file_name = '';
 var file_ext = '';
-var s_time = 0;
-var d_time = 0;
-var s_mem = 0;
-var u_mem = 0;
-var bWritten = 0;
-var loggingFd = null;
+var log = [];
 
-function AsyncParse(file, cbFunc){
+function parseFileAsync(file, cbFunc){
 	var errMsg = '';
 	
-	initParse();
-
+	write("Opening File...");
 	OpenFile(file, 'r', function(err, fd){
 		if(err){
 			errMsg = "Error: Opening file " + file + " (" + err + ")";
-			writeToConsole(errMsg);
+			write(errMsg);
 			cbFunc(errMsg, null);
 		}
 
+		write("Getting file stats...")
 		fs.fstat(fd, function(err, stats){
 			if(err){
 				errMsg = "Error: Getting file stats. (" + err + ")";
-				writeToConsole(errMsg);
+				write(errMsg);
 				cbFunc(errMsg, null);
 			}
 
-			writeToConsole("File size: " + stats.size);
-
-			s_time = process.hrtime(); //start counter
-
+			write("File Size: " + stats.size);
 			var buffer = new Buffer(stats.size);
 
+			write("Reading file...");
 			fs.read(fd, buffer, 0, stats.size, 0, function(err, bytesRead, buffer){
 				if(err){
-					errMsg = "Error: read";
-					process.exit(1);
+					errMsg = "Error: Can not read file: " + err;
+					write(errMsg);
+
+					cbFunc(errMsg, null);
 				}
 
 				var str = buffer.toString();
 				
-				ParseText(str, function(err, obj){
+				parseText(str, function(err, obj){
+					write("Closing file...");
 					fs.close(fd, function(c_err){
-						d_time = process.hrtime(s_time);
-						writeToConsole(d_time);
-						u_mem = process.memoryUsage();
-						writeToConsole("End mem: " + util.inspect(u_mem, {depth: null}));
-						writeToConsole("Used mem: " + (u_mem.heapUsed - s_mem.heapUsed))
 						cbFunc(err, obj);
 					})
 				});
@@ -59,65 +50,55 @@ function AsyncParse(file, cbFunc){
 	});	
 }
 
-function OpenFile(file, option, cbFunc){
-	if(isCallbackFunc(cbFunc)){
-		if(!file) cbFunc("No file", null);
-		fs.open(file, option, cbFunc);
-	}
-	else{
-		if(!file) return false;
-		return fs.open(file, option);
-	}
-}
-
-function SyncParse(file){
+function parseFileSync(file){
 	var errMsg = '';
-	
-	initParse();
 
+	write("Opening file...");
 	var fd = fs.openSync(file, 'r');
 		
 	if(fd !== null && fd != undefined){
+		write("Getting file stats...");
 		var stats = fs.fstatSync(fd);
 		
 		if(stats !== null && stats != undefined){
+			write("File Size: " + stats.size);
 			var buffer = new Buffer(stats.size);
+			write("Reading file...");
 			var bytesRead = fs.readSync(fd, buffer, 0, stats.size, 0);
 			var str = buffer.toString();
 
+			write("Closing file...");
 			fs.closeSync(fd);
 
-			return ParseText(str);
+			return parseText(str);
 		}
 		else{
 			errMsg = "Error: Retrieving file stats.";
+			write(errMsg);
+
 			fs.closeSync(fd);
 		}
 	}
 	else{
 		errMsg = "Error: Opening file, " + file;
+		write(errMsg);
 	}
 
 	return {err: errMsg, data: data};
 }
 
-function initParse(){
-	s_mem = process.memoryUsage();
-	writeToConsole("start mem: " + util.inspect(s_mem, {depth:null}));
-}
-
-function ParseText(text, cbFunc){
+function parseText(text, cbFunc){
+	write("Parse Started...");
 	var isAsync = isCallbackFunc(cbFunc);
 	var err = null;
 	var data = null;
 	var num_lines = 0;
-	var unproc_lines = [];
 
 	if(text && typeof text == "string"){
+		var s_time = process.hrtime(); //start counter
+
 		var lines = text.split('\r\n');
 		num_lines = lines.length;
-
-		writeToConsole("Number of Lines: " + num_lines);
 		
 		if(num_lines > 0){
 			data = {};
@@ -207,7 +188,74 @@ function ParseText(text, cbFunc){
 					case 's':
 						obj.smoothing = line[1];
 						break;
-					case 'f':
+					case 'cstype':
+						obj.cstype = {};
+						if(line.length > 2){
+							obj.cstype.rat = line[1];
+							obj.cstype.type = line[2];
+						} else{
+							obj.cstype.type = line[1];
+						}
+						break;
+					case 'deg':
+					case 'step':
+						obj[c_type] = [parseInt(line[1])];
+						if(line.length > 2){
+							obj[c_type].push(parseInt(line[2]));
+						}
+						break;
+					case 'parm':
+						if(!obj.parm){obj.parm = {};}
+						var ptype = line[1]; // u or v
+						obj.parm[ptype] = [];
+						for(var p = 2; p < line.length; p++){
+							obj.parm[ptype].push(parseFloat(line[p]));
+						}
+						break;
+					case 'surf':
+					case 'trim':
+						obj[c_type] = [];
+						break;
+					case 'bmat':
+						if(!obj.bmat){obj.bmat = {};}
+						if(!obj.bmat[c_type]){obj.bmat[c_type] = [];}
+						fspot = 'a';//temp to not get stuck in a loop.
+						do{
+
+						}while(fspot == '');
+						break;
+					case 'p': //points
+						if(!obj.point){obj.point = [];}
+						for(var p = 1; p < line.length; p++){
+							obj.point.push(parseInt(line[p]));
+						}
+						break;
+					case 'l': //lines
+						if(obj == null){obj = {};}
+						if(!obj.line){obj.line = {};}
+						var lines;
+						var lDataGrp
+						var lData;
+						for(var lIdx = 1; lIdx < line.length; lIdx++){
+							lDataGrp = line[lIdx];
+							lines = lDataGrp.indexOf('/') > -1 ? lDataGrp.split('/') : [lDataGrp];
+							for(var l = 0; l < lines.length; l++){
+								lData = lines[l];
+								if(lData != null && lData != undefined){
+									lData = parseInt(lData);
+									if(l == 0){
+										if(!obj.line.vertex){obj.line.vertex = [];}
+										obj.line.vertex.push(lData);
+									}
+									else if(l == 1){
+										if(!obj.line.texture){obj.line.texture = [];}
+										obj.line.texture.push(lData);
+									}
+								}
+							}
+						}
+						break;
+					case 'f': //faces
 						if(obj == null){obj = {};}
 						if(!obj.faces){obj.faces = {};}
 						
@@ -237,17 +285,23 @@ function ParseText(text, cbFunc){
 						}
 						break;
 					default:
-						unproc_lines.push(lines[i]);
-						writeToConsole("Unprocessed Line: (#" + i + ") " + lines[i]);
+						write("Unprocessed Line: (#" + i + ") " + lines[i]);
 				}
 			}
 		}
 		else{
 			err = "Error: Can not split file data into lines.";
+			write(err);
 		}
+
+		write("Parse Completed...");
+		var d_time = process.hrtime(s_time);
+		write("Parse time: " + d_time[0] + "s, " + d_time[1] + "ns");
+		write("Number of Lines: " + num_lines);
 	}
 	else{
 		err = "Error: No string passed to be parsed.";
+		write(err);
 	}
 
 	if(isAsync){
@@ -257,15 +311,14 @@ function ParseText(text, cbFunc){
 	}
 }
 
-function parseLine(line, obj, cbFunc){
-	var isAsync = isCallbackFunc(cbFunc);
-
-	//Do parsing here
-	
-	if(isAsync){
-		cbFunc(err, obj);
-	} else{
-		return obj;
+function OpenFile(file, option, cbFunc){
+	if(isCallbackFunc(cbFunc)){
+		if(!file) cbFunc("No file", null);
+		fs.open(file, option, cbFunc);
+	}
+	else{
+		if(!file) return false;
+		return fs.openSync(file, option);
 	}
 }
 
@@ -369,20 +422,23 @@ function setOptions(options){
 	writeToConsole("Setting options...");
 }
 
-function write(msg, cbFunc){
-	writeToConsole(msg);
-	writeToLog(msg, cbFunc);
+function writeLoggingHeader(){
+	writeToLog("ObjToJs - .obj to JS Parser.");
+	writeToLog("Log file from parsing file: " + file_path + file_name + '.' + file_ext);
+	writeToLog("Options: " + JSON.stringify(opts));
+	writeToLog(" ");
+	writeToLog("===============================================================================================================================");
+	writeToLog(" ");
 }
 
-function writeToLog(msg, cbFunc){
-	if(opts.logging && loggingFd != null && msg){
-		var buffer = new Buffer(msg + '\r\n');
-		if(isCallbackFunc(cbFunc)){
-			fs.write(loggingFd, buffer, 0, buffer.length, bWritten, cbFunc);
-		}
-		else{
-			bWritten += fs.writeSync(loggingFd, buffer, 0, buffer.length, bWritten);
-		}
+function write(msg){
+	writeToConsole(msg);
+	writeToLog(msg);
+}
+
+function writeToLog(msg){
+	if(opts.logging && msg){
+		log.push(msg);
 	}
 }
 
@@ -415,8 +471,116 @@ function getPath(ext){
 	}
 }
 
+function processJSON(data, cbFunc){
+	var isAsync = isCallbackFunc(cbFunc);
+	var err = 0;
+
+	if(opts.saveJSON || opts.returnJSON){
+		if(data == null){
+			err = "ERROR: Can not create JSON...  Data is null!";
+			write(err);
+			if(isAsync){cbFunc(err, null);}
+			else{return null;}
+		}
+		else{
+			writeToConsole("Creating JSON from data...");
+			var json = JSON.stringify(data);
+
+			if(opts.saveJSON){
+				var jsonFile = getJsonFilePath();
+				writeToConsole("Saving JSON file...");
+
+				if(isAsync){
+					fs.writeFile(jsonFile, json, function(wErr){
+						if(wErr){
+							err = "Error: Saving JSON file: " + wErr;
+							write(err);
+						}
+						else{
+							write("JSON saved to file " + jsonFile);
+						}
+
+						cbFunc(err, opts.returnJSON ? json : null);
+					});
+				}
+				else{
+					try{
+						fs.writeFileSync(jsonFile, json);
+						write("JSON saved to file " + jsonFile);
+					}
+					catch(e){
+						write("Error: Can not save JSON file: " + e);
+					}
+
+					return opts.returnJSON ? json : null;
+				}
+			}
+			else{
+				if(isAsync){cbFunc(0, json);}
+				else{return json;}
+			}
+		}
+	}
+	else{
+		if(isAsync){cbFunc(0, null);}
+		else{return null;}
+	}
+}
+
+function saveLog(cbFunc){
+	var isAsync = isCallbackFunc(cbFunc);
+	var err = 0;
+
+	if(opts.logging){
+		writeToConsole("Saving Log file...");
+		var logFile = getLogFilePath();
+
+		if(log != null && log.length > 0){
+			var logData = log.join('\r\n');
+
+			if(isAsync){
+				fs.writeFile(logFile, logData, function(wErr){
+					if(wErr){
+						err = "Error: Can not save log file: " + wErr;
+						writeToConsole(err);
+					}
+					else{
+						writeToConsole("Log file saved: " + logFile);
+					}
+
+					cbFunc(err);
+				});
+			}
+			else{
+				try{
+					fs.writeFileSync(logFile, logData);
+					writeToConsole("Log file saved: " + logFile);
+				}
+				catch(e){
+					err = "Error: Can not save log file: " + e;
+					writeToConsole(err);
+				}
+
+				return err;
+			}
+		}
+		else{
+			err = "Error: No log data recorded to save.";
+
+			if(isAsync){cbFunc(err);}
+			else{return err;}
+		}
+	}
+	else{
+		if(isAsync){cbFunc(err);}
+		else{return err;}
+	}
+}
+
 function parse(file, options, cbFunc){
 	var ov_s_time = process.hrtime();
+	var s_mem = process.memoryUsage();
+
 	if(arguments.length == 0){
 		writeToConsole("Error: No arguments found.", true);
 		process.exit(1);
@@ -433,81 +597,65 @@ function parse(file, options, cbFunc){
 	}
 
 	setOptions(options);
-	writeToConsole("Start Parse (Async)...");
 
 	validateFile(file, function(err){
 		if(err){
-			writeToConsole(err);
+			write(err);
 			cbFunc(err, null);
 		}
 		else{
-			if(opts.logging){
-				var logFile = getLogFilePath();
-				OpenFile(logFile, 'w', function(err, fd){
-					if(err){
-						writeToConsole("Error: Failed to open file for logging: " + logFile);
-						writeToConsole(err);
-						writeToConsole("Proceeding with file parsing...");
+			writeLoggingHeader();
+
+			parseFileAsync(file, function(err, data){	
+				processJSON(data, function(err, json){
+					if(json != null){
+						data.json = json;
 					}
 
-					loggingFd = fd;
+					write("Memory usage before parse: " + util.inspect(s_mem, {depth:null}));
+					var u_mem = process.memoryUsage();
+					write("Memory usage after parse: " + util.inspect(u_mem, {depth: null}));
+					write("Total memory used: " + (u_mem.heapUsed - s_mem.heapUsed))
 
-					AsyncParse(file, function(err, data){
-						writeToConsole("Parse complete.");
-						var ov_e_time = process.hrtime(ov_s_time);
-						writeToConsole("Overall Run Time: " + ov_e_time[0] + "s, " + ov_e_time[1] + "ns");
+					var ov_e_time = process.hrtime(ov_s_time);
+					write("Overall Run Time: " + ov_e_time[0] + "s, " + ov_e_time[1] + "ns");
 
+					saveLog(function(err){
 						cbFunc(err, data);
 					});
 				});
-			}
-			else{
-				AsyncParse(file, function(err, data){
-					writeToConsole("Parse complete.");
-					var ov_e_time = process.hrtime(ov_s_time);
-					writeToConsole("Overall Run Time: " + ov_e_time[0] + "s, " + ov_e_time[1] + "ns");
-
-					cbFunc(err, data);
-				});
-			}
+			});
 		}
 	});
 }
 
 function parseSync(file, options){
 	var ov_s_time = process.hrtime();
+	var s_mem = process.memoryUsage();
+	
 	setOptions(options);
-	writeToConsole("Start Parse (Sync)...");
 
 	var err = validateFile(file);
+	
 	if(err){
-		writeToConsole(err);
+		write(err);
 		return {err: err, data:null};
 	}
 	
-	if(opts.logging){
-		var logFile = getLogFilePath();
-		loggingFd = OpenFile(logFile, 'r');
-		writeToConsole(loggingFd);
-	}
+	writeLoggingHeader();
 
-	var data = SyncParse(file);
+	var data = parseFileSync(file);
+	var json = processJSON(data);
 
-	writeToConsole("Parse complete...");
-
-	if(opts.saveJSON || opts.returnJSON){
-		var json = JSON.stringify(data);
-		
-		if(opts.saveJSON){
-			var jsonFile = getJsonFilePath();
-			writeToConsole("Saving JSON to file: " + jsonFile);
-			fs.writeFileSync(jsonFile, json);
-			writeToConsole("Save JSON Complete...");
-		}
-	}
+	write("Memory usage before parse: " + util.inspect(s_mem, {depth:null}));
+	var u_mem = process.memoryUsage();
+	write("Memory usage after parse: " + util.inspect(u_mem, {depth: null}));
+	write("Total memory used: " + (u_mem.heapUsed - s_mem.heapUsed))
 
 	var ov_e_time = process.hrtime(ov_s_time);
-	writeToConsole("Overall Run Time: " + ov_e_time[0] + "s, " + ov_e_time[1] + "ns");
+	write("Overall Run Time: " + ov_e_time[0] + "s, " + ov_e_time[1] + "ns");
+
+	saveLog();
 
 	var rData = {err: err, data: data};
 	if(json) rData.json = json;
