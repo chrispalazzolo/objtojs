@@ -93,11 +93,18 @@ function parseText(text, cbFunc){
 	var err = null;
 	var data = null;
 	var num_lines = 0;
+	var lines = [];
 
 	if(text && typeof text == "string"){
 		var s_time = process.hrtime(); //start counter
 
-		var lines = text.split('\r\n');
+		if(text.indexOf('\r\n') > -1){
+			lines = text.split('\r\n');
+		}
+		else if(text.indexOf('\n') > -1){
+			lines = text.split('\n');
+		}
+
 		num_lines = lines.length;
 		
 		if(num_lines > 0){
@@ -146,8 +153,9 @@ function parseText(text, cbFunc){
 
 				p_type = c_type;
 				c_type = line[0];
+				if(c_type) c_type = c_type.toLowerCase();
 				
-				if(c_type != p_type && p_type == 'f' && obj != null){
+				if(c_type != p_type && (p_type == 'f' || p_type == 'l' || p_type == 'p') && obj != null){
 					if(!data.objs){ data.objs = []; }
 
 					data.objs.push(obj);
@@ -155,37 +163,50 @@ function parseText(text, cbFunc){
 				}
 
 				switch(c_type){
-					case 'mtllib':
+					case 'mtllib': // Material Library
+						write("Parsing Materal lib file reference: " + line[1]);
 						data.material_lib = line[1];
 						isHeader = false;
 						break;
-					case 'usemtl':
+					case 'usemtl': // Material name
+						write("Parsing Materal name: " + line[i]);
 						obj.use_material = line[1];
 						break;
-					case 'v':
-					case 'vt':
-					case 'vn':
-					case 'vp':
-						if(obj == null){obj = {};}
-						if(!obj[c_type]){
-							obj[c_type] = [];
-						}
+					case 'v':  // Geometric vertices
+					case 'vt': // Texture vertices
+					case 'vn': // Vertex normals
+					case 'vp': // Parameter space vertices
+						if(c_type == 'v' && p_type != 'v') write("Parsing Geometric vertices...");
+						else if(c_type == 'vt' && p_type != 'vt') write("Parsing Texture vertices...");
+						else if(c_type == 'vn' && p_type != 'vn') write("Parsing Vertex normals...");
+						else if(c_type == 'vp' && p_type != 'vp') write("Parsing Parameter space vertices...");
 
+						if(obj == null) obj = {};
+						if(!obj[c_type]) obj[c_type] = [];
+						
 						for(var v = 1; v < line.length; v++){
 							if(line[v] != null && line[v] != undefined && line[v] != ''){
 								obj[c_type].push(parseFloat(line[v]));
 							}
 						}
 						break;
-					case 'o':
-						if(obj == null){obj = {};}
+					case 'o': // Object name
+						write("Parsing Object: " + line[1]);
+						if(obj == null) obj = {};
 						obj.name = line[1];
 						break;
-					case 'g':
-						if(obj == null){obj = {};}
-						obj.group_name = line[1];
+					case 'g': // Group name
+						write("Parsing Group name: " + line[1]);
+						if(obj == null) obj = {};
+						obj.group = line[1];
 						break;
-					case 's':
+					case 'mg': // Merging group
+						write("Parsing Merging group: " + line[1]);
+						if(obj == null) obj = {};
+						obj.mergin_group = line[1];
+						break;
+					case 's': // Smoothing
+						write("Parsing Smoothing...");
 						obj.smoothing = line[1];
 						break;
 					case 'cstype':
@@ -217,30 +238,33 @@ function parseText(text, cbFunc){
 						obj[c_type] = [];
 						break;
 					case 'bmat':
-						if(!obj.bmat){obj.bmat = {};}
-						if(!obj.bmat[c_type]){obj.bmat[c_type] = [];}
+						write("Parsing basis matrix...");
+						if(!obj.bmat) obj.bmat = {};
+						if(!obj.bmat[c_type]) obj.bmat[c_type] = [];
 						fspot = 'a';//temp to not get stuck in a loop.
 						do{
 
 						}while(fspot == '');
 						break;
 					case 'p': //points
+						if(p_type != 'p') write("Paring Points...");
 						if(!obj.point){obj.point = [];}
 						for(var p = 1; p < line.length; p++){
 							obj.point.push(parseInt(line[p]));
 						}
 						break;
 					case 'l': //lines
+						if(p_type != 'l') write("Parsing line vertex...");
 						if(obj == null){obj = {};}
 						if(!obj.line){obj.line = {};}
-						var lines;
+						var lns;
 						var lDataGrp
 						var lData;
 						for(var lIdx = 1; lIdx < line.length; lIdx++){
 							lDataGrp = line[lIdx];
-							lines = lDataGrp.indexOf('/') > -1 ? lDataGrp.split('/') : [lDataGrp];
-							for(var l = 0; l < lines.length; l++){
-								lData = lines[l];
+							lns = lDataGrp.indexOf('/') > -1 ? lDataGrp.split('/') : [lDataGrp];
+							for(var l = 0; l < lns.length; l++){
+								lData = lns[l];
 								if(lData != null && lData != undefined){
 									lData = parseInt(lData);
 									if(l == 0){
@@ -256,8 +280,9 @@ function parseText(text, cbFunc){
 						}
 						break;
 					case 'f': //faces
-						if(obj == null){obj = {};}
-						if(!obj.faces){obj.faces = {};}
+						if(p_type != 'f') write("Parsing Faces...");
+						if(obj == null) obj = {};
+						if(!obj.faces) obj.faces = {};
 						
 						for(var fData = 1; fData < line.length; fData++){
 							var faces = line[fData].indexOf('/') > -1 ? line[fData].split('/') : [line[fData]];
