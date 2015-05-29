@@ -169,7 +169,7 @@ function parseText(text, cbFunc){
 						isHeader = false;
 						break;
 					case 'usemtl': // Material name
-						write("Parsing Materal name: " + line[i]);
+						write("Parsing Materal name: " + line[1]);
 						obj.use_material = line[1];
 						break;
 					case 'v':  // Geometric vertices
@@ -209,7 +209,11 @@ function parseText(text, cbFunc){
 						write("Parsing Smoothing...");
 						obj.smoothing = line[1];
 						break;
+					case 'curv':
+						write("Parsing Curve...");
+						break;
 					case 'cstype':
+						write("Parsing cstype...");
 						obj.cstype = {};
 						if(line.length > 2){
 							obj.cstype.rat = line[1];
@@ -220,12 +224,14 @@ function parseText(text, cbFunc){
 						break;
 					case 'deg':
 					case 'step':
+						write("Parsing " + c_type + "...");
 						obj[c_type] = [parseInt(line[1])];
 						if(line.length > 2){
 							obj[c_type].push(parseInt(line[2]));
 						}
 						break;
 					case 'parm':
+						write("Parsing parm...");
 						if(!obj.parm){obj.parm = {};}
 						var ptype = line[1]; // u or v
 						obj.parm[ptype] = [];
@@ -235,16 +241,42 @@ function parseText(text, cbFunc){
 						break;
 					case 'surf':
 					case 'trim':
+						write("Parsing " + c_type + "...");
 						obj[c_type] = [];
 						break;
 					case 'bmat':
-						write("Parsing basis matrix...");
-						if(!obj.bmat) obj.bmat = {};
-						if(!obj.bmat[c_type]) obj.bmat[c_type] = [];
-						fspot = 'a';//temp to not get stuck in a loop.
-						do{
+						var uv = line[1];
+						write("Parsing basis matrix " + uv + "...");
+						if(!obj.deg || obj.deg.length < 2){
+							write("Error: No DEG value found, can't parse basis martix...");
+							break;
+						}
+						if(!obj[c_type]) obj[c_type] = {};
+						if(!obj[c_type][uv]) obj[c_type][uv] = [];
+						var matCt = obj.deg[uv == 'u' ? 0 : 1] + 1;
+						for(var b = 2; b < line.length; b++){
+							if(line[b] == "\\"){break;}
+							if(line[b] != ''){
+								obj[c_type][uv].push(uv == 'u' ? parseInt(line[b]) : parseFloat(line[b]));
+							}	
+						}
+						matCt--;
+						matCt = matCt + i;
+						for(var bl = i + 1; bl <= matCt; bl++){
+							line = lines[bl];
+							if(line != undefined && line != ''){
+								line = line.split(' ');
+								var val = null;
+								for(var lIdx = 0; lIdx < line.length; lIdx++){
+									val = line[lIdx];
+									if(val != '' && val != '\\'){
+										obj[c_type][uv].push(uv == 'u' ? parseInt(val) : parseFloat(val));
+									}
+								}
 
-						}while(fspot == '');
+								i++;
+							}
+						}
 						break;
 					case 'p': //points
 						if(p_type != 'p') write("Paring Points...");
@@ -407,9 +439,6 @@ function parseFilePath(file, cbFunc){
 		file_name = fn[0];
 		file_ext = fn[1];
 		file_path = f.slice(0, f.length - 1).join('/') + '/';
-		// writeToConsole("file_name: " + file_name);
-		// writeToConsole("file_ext: " + file_ext);
-		// writeToConsole("file_path: " + file_path);
 	}
 }
 
