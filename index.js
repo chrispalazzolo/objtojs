@@ -155,7 +155,7 @@ function parseText(text, cbFunc){
 				c_type = line[0];
 				if(c_type) c_type = c_type.toLowerCase();
 				
-				if(c_type != p_type && (p_type == 'f' || p_type == 'l' || p_type == 'p') && obj != null){
+				if(c_type != p_type && (p_type == 'f' || p_type == 'l' || p_type == 'p' || p_type == 'end') && obj != null){
 					if(!data.objs){ data.objs = []; }
 
 					data.objs.push(obj);
@@ -209,10 +209,7 @@ function parseText(text, cbFunc){
 						write("Parsing Smoothing...");
 						obj.smoothing = line[1];
 						break;
-					case 'curv':
-						write("Parsing Curve...");
-						break;
-					case 'cstype':
+					case 'cstype': // Curve or Surface type
 						write("Parsing cstype...");
 						obj.cstype = {};
 						if(line.length > 2){
@@ -222,29 +219,98 @@ function parseText(text, cbFunc){
 							obj.cstype.type = line[1];
 						}
 						break;
-					case 'deg':
-					case 'step':
+					case 'deg': // Degree
+					case 'step': // Step
 						write("Parsing " + c_type + "...");
 						obj[c_type] = [parseInt(line[1])];
 						if(line.length > 2){
 							obj[c_type].push(parseInt(line[2]));
 						}
 						break;
-					case 'parm':
+					case 'curv': // Curve
+						write("Parsing Curve...");
+						obj.curv = {u:null, v:[]};
+						obj.curv.u = [parseFloat(line[1]), parseFloat(line[2])]; //[start, end]
+						for(var c = 3; c < line.length; c++){
+							if(line[c] == '\\'){
+								i++;
+								line = lines[i].split(' ');
+								c = 0;
+							}
+
+							obj.curv.v.push(parseInt(line[c]));
+						}
+						break;
+					case 'curv2': // 2D Curve
+						write("Parsing Curve 2D...");
+						obj.curv2 = [];
+						for(var c = 1; c < line.length; c++){
+							if(line[c] == '\\'){
+								i++;
+								line = lines[i].split(' ');
+								c = 0;
+							}
+
+							obj.curv2.push(parseInt(line[c]));
+						}
+						break;
+					case 'parm': // Global Parameters
 						write("Parsing parm...");
 						if(!obj.parm){obj.parm = {};}
 						var ptype = line[1]; // u or v
 						obj.parm[ptype] = [];
 						for(var p = 2; p < line.length; p++){
+							if(line[p] == '\\'){
+								i++;
+								line = lines[i].split(' ');
+								p = 0;
+							}
 							obj.parm[ptype].push(parseFloat(line[p]));
 						}
 						break;
-					case 'surf':
-					case 'trim':
-						write("Parsing " + c_type + "...");
-						obj[c_type] = [];
+					case 'surf': // Surface
+						write("Parsing Surface...");
+						obj.surf = {u:null, v: null, vertices: null};
+						obj.surf.u = [parseFloat(line[1]), parseFloat(line[2])];
+						obj.surf.v = [parseFloat(line[3], parseFloat(line[4]))];
+						var ver = [];
+						var txt = null; // texture vertex
+						var nrm = null; // normals
+						var verts;
+						for(var v = 5; v < line.length; v++){
+							if(line[v] == '\\'){
+								i++;
+								line = lines[i].split(' ');
+								v = 0;
+							}
+							verts = line[v];
+							verts = verts.split('/');
+							ver.push(parseInt(verts[0]));
+							if(verts.length > 1){
+								if(txt == null) txt = [];
+								txt.push(parseInt(verts[1]));
+							}
+							if(verts.length > 2){
+								if(nrm == null) nrm = [];
+								nrm.push(parseFloat(verts[2]));
+							}
+						}
+						obj.surf.vertices = {vertex: ver, texture: txt, normals: nrm};
+
 						break;
-					case 'bmat':
+					case 'trim': // Trimming loop
+					case 'hole': // Trimming loop (hole)
+					case 'scrv': // Special Curve
+						if(c_type == "scrv") write("Parsing Special Curve");
+						else write("Parsing Trimming Loop" + c_type == "hole" ? " (hole)" : "" + "...");
+						if(!obj[c_type]) obj[c_type] = [];
+						obj[c_type].push([parseFloat(line[1]), parseFloat(line[2]), parseInt(line[3])]);
+						break;
+					case 'sp': // Special Point
+						write("Parsing Special Point");
+						obj['sp'] = [parseInt(line[1]), parseInt(line[2])];
+						break;
+					case 'bmat': // basis matrix
 						var uv = line[1];
 						write("Parsing basis matrix " + uv + "...");
 						if(!obj.deg || obj.deg.length < 2){
