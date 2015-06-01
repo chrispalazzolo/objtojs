@@ -284,7 +284,7 @@ function parseText(text, cbFunc){
 						break;
 					case 'deg': // Degree
 					case 'step': // Step
-						write("Parsing " + (c_type == "deg") ? "Degrees" : "Step" + " (" + c_type + ")...");
+						write("Parsing " + (c_type == "deg" ? "Degrees" : "Step") + " (" + c_type + ")...");
 						obj[c_type] = [parseInt(line[1])];
 						if(line.length > 2){
 							obj[c_type].push(parseInt(line[2]));
@@ -417,7 +417,7 @@ function parseText(text, cbFunc){
 							parseInt(line[4]),   // Index of curve (surface 1)
 							parseInt(line[5]),   // Surface 2
 							parseFloat(line[6]), // Start of curve (surface 2)
-							parseFloat(line[7])  // End of curve (surface 2)
+							parseFloat(line[7]), // End of curve (surface 2)
 							parseInt(line[8])    // Index of curve (surfect 2)
 						];
 						break;
@@ -481,7 +481,7 @@ function parseText(text, cbFunc){
 						if(obj == null) obj = {};
 						obj.surface_tech = {technique: line[1]};
 						switch(line[1]){
-							case: 'cparma':
+							case 'cparma':
 								obj.surface_tech.resolution =[
 									parseFloat(line[2]), // U
 									parseFloat(line[3])  // V
@@ -512,7 +512,7 @@ function parseText(text, cbFunc){
 							obj.b_spline_patch.push(parseInt(line[b]));
 						}
 						break;
-					case: 'bzp': // Bezier Patch
+					case 'bzp': // Bezier Patch
 						write("Parsing Bezier Patch (bzp)...");
 						if(obj == null) obj = {};
 						obj.bezier_patch = [];
