@@ -176,17 +176,31 @@ function parseText(text, cbFunc){
 					case 'vt': // Texture vertices
 					case 'vn': // Vertex normals
 					case 'vp': // Parameter space vertices
-						if(c_type == 'v' && p_type != 'v') write("Parsing Geometric vertices (v)...");
-						else if(c_type == 'vt' && p_type != 'vt') write("Parsing Texture vertices (vt)...");
-						else if(c_type == 'vn' && p_type != 'vn') write("Parsing Vertex normals (vn)...");
-						else if(c_type == 'vp' && p_type != 'vp') write("Parsing Parameter space vertices (vp)...");
+						var which_v = null;
+						if(c_type == 'v'){
+							if(p_type != 'v') write("Parsing Geometric vertices (v)...");
+							which_v = 'geometric';
+						}
+						else if(c_type == 'vt'){
+							if(p_type != 'vt') write("Parsing Texture vertices (vt)...");
+							which_v = 'texture';
+						}
+						else if(c_type == 'vn'){
+							if(p_type != 'vn') write("Parsing Vertex normals (vn)...");
+							which_v = "normals";
+						}
+						else if(c_type == 'vp'){
+							if(p_type != 'vp') write("Parsing Parameter space vertices (vp)...");
+							which_v = "parameter_space";
+						}
 
 						if(obj == null) obj = {};
-						if(!obj[c_type]) obj[c_type] = [];
+						if(!obj.vertices) obj.vertices = {};
+						if(!obj.vertices[which_v]) obj.vertices[which_v] = [];
 						
 						for(var v = 1; v < line.length; v++){
 							if(line[v] != null && line[v] != undefined && line[v] != ''){
-								obj[c_type].push(parseFloat(line[v]));
+								obj.vertices[which_v].push(parseFloat(line[v]));
 							}
 						}
 						break;
