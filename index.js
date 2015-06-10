@@ -121,8 +121,8 @@ function parseText(text, cbFunc){
 
 				if(line == undefined || line == '' || line == null){
 					if(i == last_line && obj != null){
-						if(!data.objs){ data.objs = []; }
-						data.objs.push(obj);
+						if(!data.objects){ data.objects = []; }
+						data.objects.push(obj);
 					}
 
 					continue;
@@ -148,7 +148,6 @@ function parseText(text, cbFunc){
 					continue;
 				}
 
-				//line = line.replace(/  /g, ' ');
 				line = line.split(' ');
 
 				p_type = c_type;
@@ -156,9 +155,9 @@ function parseText(text, cbFunc){
 				if(c_type) c_type = c_type.toLowerCase();
 				
 				if(c_type != p_type && (p_type == 'f' || p_type == 'l' || p_type == 'p' || p_type == 'end') && obj != null){
-					if(!data.objs){ data.objs = []; }
+					if(!data.objects){ data.objects = []; }
 
-					data.objs.push(obj);
+					data.objects.push(obj);
 					obj = null;
 				}
 
@@ -680,7 +679,10 @@ function getDefaultOptions(){
 		verbose: false,
 		logging: false,
 		returnJSON: false,
-		saveJSON: false
+		saveJSON: false,
+		parseMTLFile: false,
+		returnMTLJSON: false,
+		saveMTLJSON: false
 	};
 }
 
@@ -702,6 +704,16 @@ function setOptions(options){
 		}
 		if(options.saveJSON == true){
 			opts.saveJSON = true;
+		}
+		if(options.parseMTLFile == true){
+			opts.parseMTLFile = true;
+
+			if(options.returnMTLJSON == true){
+				opts.returnMTLJSON = true;
+			}
+			if(options.saveMTLJSON == true){
+				opts.saveMTLJSON = true;
+			}
 		}
 	}
 
@@ -930,8 +942,8 @@ function parseSync(file, options){
 	
 	writeLoggingHeader();
 
-	var data = parseFileSync(file);
-	var json = processJSON(data);
+	var parsedObj = parseFileSync(file);
+	var json = processJSON(parsedObj.data);
 
 	write("Memory usage before parse: " + util.inspect(s_mem, {depth:null}));
 	var u_mem = process.memoryUsage();
@@ -943,7 +955,7 @@ function parseSync(file, options){
 
 	saveLog();
 
-	var rData = {err: err, data: data};
+	var rData = {err: err, data: parsedObj};
 	if(json) rData.json = json;
 
 	return rData;
