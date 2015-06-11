@@ -4,6 +4,7 @@ var opts;
 var file_path = '';
 var file_name = '';
 var file_ext = '';
+var save_path = '';
 var log = [];
 
 function parseFileAsync(file, cbFunc){
@@ -750,22 +751,79 @@ function isCallbackFunc(cbFunc){
 	return cbFunc && typeof cbFunc == "function";
 }
 
-function getObjFilePath(){
-	return getPath('obj');
+function getObjFileAndPath(){
+	return getPathAndFile('obj');
 }
-function getJsonFilePath(){
-	return getPath('json');
+function getJsonFileAndPath(){
+	return getPathAndFile('json');
 }
-function getLogFilePath(){
-	return getPath('log');
+function getLogFileAndPath(){
+	return getPathAndFile('log');
 }
-
-function getPath(ext){
+function getPathAndFile(ext){
 	switch(ext){
 		case 'obj':
 		case 'json':
 		case 'log': return file_path + file_name + '.' + ext;
 		default: return '';
+	}
+}
+
+function createFolder(cbFunc){
+	var isAsync = isCallbackFunc(cbFunc);
+	
+	if(opts.saveJSON || opts.logging){
+		write("Creating folder to save log and/or JSON files...");
+		var path = file_path + file_name + '/';
+		if(isAsync){
+			fs.exists(path, function(exists){
+				if(!exists){
+					fs.mkdir(path, function(e){
+						if(e){
+							write("Error: Can not create folder " + path + " | " + e);
+							write("Files will be saved to " + file_path);
+							save_path = file_path;
+							cbFunc(e);
+						}
+						
+						write("Folder created: " + path);
+						save_path = path;
+						cbFunc(0);
+					});
+				}
+				else{
+					write("Folder already exists, no need to create it...");
+					save_path = path;
+					cbFunc(0);
+				}
+			});
+		}
+		else{
+			if(!fs.existsSync(path)){
+				var e = fs.mkdirSync(path);
+
+				if(e){
+					write("Error: Can not create folder " + path + " | " + e);
+					write("Files will be saved to " + file_path);
+							save_path = file_path;
+					return e;
+				}
+				else{
+					write("Folder created: " + path);
+					save_path = path;
+					return 0;
+				}
+			}
+			else{
+				write("Folder already exists, no need to create it...");
+				save_path = path;
+				return 0;
+			}
+		}
+	}
+	else{
+		if(isAsync){cbFunc(0);}
+		else{return 0;}
 	}
 }
 
@@ -785,7 +843,7 @@ function processJSON(data, cbFunc){
 			var json = JSON.stringify(data);
 
 			if(opts.saveJSON){
-				var jsonFile = getJsonFilePath();
+				var jsonFile = save_path + file_name + ".json";
 				writeToConsole("Saving JSON file...");
 
 				if(isAsync){
@@ -793,18 +851,32 @@ function processJSON(data, cbFunc){
 						if(wErr){
 							err = "Error: Saving JSON file: " + wErr;
 							write(err);
+							cbFunc(err, opts.returnJSON ? json : null);
 						}
 						else{
 							write("JSON saved to file " + jsonFile);
+							saveJSON(data.objects, 0, function(){
+								cbFunc(err, opts.returnJSON ? json : null);
+							});
 						}
-
-						cbFunc(err, opts.returnJSON ? json : null);
 					});
 				}
 				else{
 					try{
 						fs.writeFileSync(jsonFile, json);
 						write("JSON saved to file " + jsonFile);
+
+						for(var o = 0; o < data.objects.length; o++){
+							jsonFile = save_path + data.objects[o].name + ".json";
+							json = JSON.stringify(data.objects[o]);
+							try{
+								fs.writeFileSync(jsonFile, json);
+								write("Saved JSON: " + jsonFile);
+							}
+							catch(e){
+								write("Error: Can not save JSON file: " + jsonFile + " | " + e);
+							}
+						}
 					}
 					catch(e){
 						write("Error: Can not save JSON file: " + e);
@@ -825,13 +897,36 @@ function processJSON(data, cbFunc){
 	}
 }
 
+function saveJSON(data, idx, cbFunc){
+	if(idx < data.length){
+		var jFile = save_path + data[idx].name + ".json";
+		var json = JSON.stringify(data[idx]);
+		fs.writeFile(jFile, json, function(err){
+			if(err){
+				write("Error: Saving JSON file: " + jFile + ", " + err);
+			}
+			else{
+				write("Saved JSON: " + jFile);
+			}
+
+			idx++;
+			if(idx < data.length){
+				saveJSON(data,idx, cbFunc);
+			}
+			else{
+				cbFunc();
+			}
+		});
+	}
+}
+
 function saveLog(cbFunc){
 	var isAsync = isCallbackFunc(cbFunc);
 	var err = 0;
 
 	if(opts.logging){
 		writeToConsole("Saving Log file...");
-		var logFile = getLogFilePath();
+		var logFile = save_path + file_name + ".log";
 
 		if(log != null && log.length > 0){
 			var logData = log.join('\r\n');
@@ -904,25 +999,27 @@ function parse(file, options, cbFunc){
 		else{
 			writeLoggingHeader();
 
-			parseFileAsync(file, function(err, data){	
-				processJSON(data, function(err, json){
-					if(json != null){
-						data.json = json;
-					}
+			createFolder(function(err){
+				parseFileAsync(file, function(err, data){	
+					processJSON(data, function(err, json){
+						if(json != null){
+							data.json = json;
+						}
 
-					write("Memory usage before parse: " + util.inspect(s_mem, {depth:null}));
-					var u_mem = process.memoryUsage();
-					write("Memory usage after parse: " + util.inspect(u_mem, {depth: null}));
-					write("Total memory used: " + (u_mem.heapUsed - s_mem.heapUsed))
+						write("Memory usage before parse: " + util.inspect(s_mem, {depth:null}));
+						var u_mem = process.memoryUsage();
+						write("Memory usage after parse: " + util.inspect(u_mem, {depth: null}));
+						write("Total memory used: " + (u_mem.heapUsed - s_mem.heapUsed))
 
-					var ov_e_time = process.hrtime(ov_s_time);
-					write("Overall Run Time: " + ov_e_time[0] + "s, " + ov_e_time[1] + "ns");
+						var ov_e_time = process.hrtime(ov_s_time);
+						write("Overall Run Time: " + ov_e_time[0] + "s, " + ov_e_time[1] + "ns");
 
-					saveLog(function(err){
-						cbFunc(err, data);
+						saveLog(function(err){
+							cbFunc(err, data);
+						});
 					});
 				});
-			});
+			})
 		}
 	});
 }
@@ -939,10 +1036,13 @@ function parseSync(file, options){
 		write(err);
 		return {err: err, data:null};
 	}
-	
+
 	writeLoggingHeader();
 
 	var parsedObj = parseFileSync(file);
+
+	createFolder();
+
 	var json = processJSON(parsedObj.data);
 
 	write("Memory usage before parse: " + util.inspect(s_mem, {depth:null}));
