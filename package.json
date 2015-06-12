@@ -1,0 +1,31 @@
+{
+  "name": "objtojs",
+  "version": "0.1.0",
+  "description": "nodejs module to parse WaveFront Object (.obj) files to javascript and/or JSON",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chrispalazzolo/objtojs.git"
+  },
+  "dependencies": {
+    "mtltojs": "0.1.0"
+  },
+  "keywords": [
+    ".obj",
+    "nodejs",
+    "parser",
+    "wavefront",
+    "3d",
+    "material",
+    "object"
+  ],
+  "author": "Chris Palazzolo <chrisp.git@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/chrispalazzolo/objtojs/issues"
+  },
+  "homepage": "https://github.com/chrispalazzolo/objtojs"
+}
