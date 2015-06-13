@@ -11,7 +11,7 @@
     "url": "https://github.com/chrispalazzolo/objtojs.git"
   },
   "dependencies": {
-    "mtltojs": "0.1.0"
+    "mtltojs": ">= 0.1.0"
   },
   "keywords": [
     ".obj",

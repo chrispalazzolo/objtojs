@@ -8,7 +8,7 @@ var file_ext = '';
 var save_path = '';
 var log = [];
 
-function parseFileAsync(file, cbFunc){
+function parseFile(file, cbFunc){
 	var errMsg = '';
 	
 	write("Opening File...");
@@ -132,13 +132,13 @@ function parseText(text, cbFunc){
 
 				if(line.charAt(0) == "#"){
 					if(isHeader){
-						if(!data.comments){
-							data.comments = [];
+						if(!data.header){
+							data.header = [];
 						}
 
-						data.comments.push(line);
+						data.header.push(line);
 					}
-					else{
+					else if(opts.parseComments == true){
 						if(obj == null){obj = {};}
 						if(!obj.comments){
 							obj.comments = [];
@@ -776,13 +776,15 @@ function createFolder(cbFunc){
 	if(opts.saveJSON || opts.logging){
 		write("Creating folder to save log and/or JSON files...");
 		var path = file_path + file_name + '/';
+		write("Checking if path '" + path + "' exists...");
 		if(isAsync){
 			fs.exists(path, function(exists){
 				if(!exists){
+					write("Creating folder '" + path + "'...");
 					fs.mkdir(path, function(e){
 						if(e){
 							write("Error: Can not create folder " + path + " | " + e);
-							write("Files will be saved to " + file_path);
+							write("Files will be saved to '" + file_path + "'...");
 							save_path = file_path;
 							cbFunc(e);
 						}
@@ -971,6 +973,60 @@ function saveLog(cbFunc){
 	}
 }
 
+function parseMTLFile(data, cbFunc){
+	var isAsync = isCallbackFunc(cbFunc);
+	var rObj = {err:'', data: null}; //return object
+	if(opts.parseMTLFile == true){
+		var file = data.material_lib;
+		write("Starting of parsing of Material file '" + file + "'...");
+		if(file){
+			file = file_path + file;
+			write("Parsing material file: " + file);
+			var mOpts = {
+				parseComments: opts.parseComments,
+				verbose: opts.verbose,
+				logging: opts.logging,
+				returnJSON: opts.returnMTLJSON,
+				saveJSON: opts.saveMTLJSON
+			};
+
+			if(isAsync){
+				mtl.parse(file, mOpts, function(err, data){
+					if(err){
+						write("Error: There was an error when parsing the material file; please see the log file under material folder for more details...");	
+					}else{
+						write("Parse of material file complete...");
+					}
+
+					cbFunc(err, data);
+				});
+			}
+			else{
+				var mData = mtl.parseSync(mtlFile, mOpts);
+
+				if(!mData || mData.err){
+					write("Error: There was an error when parsing the material file; please see the log file under material folder for more details...");
+				}else{
+					write("Parse of material file complete...");
+				}
+
+				return mData;
+			}
+		}
+		else{
+			write("Error: No material file reference was parsed in this object file.");
+			rObj.err = "No file reference was found in object file.";
+			if(isAsync){cbFunc(rObj.err, null);}
+			else{return rObj;}
+		}			
+	}
+	else{
+		rObj.err = -1; // option not set
+		if(isAsync){cbFunc(-1, null);}
+		else{return rObj;}
+	}
+}
+
 function parse(file, options, cbFunc){
 	var ov_s_time = process.hrtime();
 	var s_mem = process.memoryUsage();
@@ -1000,11 +1056,12 @@ function parse(file, options, cbFunc){
 		else{
 			writeLoggingHeader();
 
-			createFolder(function(err){
-				parseFileAsync(file, function(err, data){	
-					processJSON(data, function(err, json){
-						if(json != null){
-							data.json = json;
+			parseFile(file, function(err, parsedObj){
+				var rObj = {err: err, data: parsedObj};
+				createFolder(function(err){
+					processJSON(parsedObj, function(err, json){
+						if(!err && json != null){
+							rObj.JSON = json;
 						}
 
 						write("Memory usage before parse: " + util.inspect(s_mem, {depth:null}));
@@ -1015,8 +1072,14 @@ function parse(file, options, cbFunc){
 						var ov_e_time = process.hrtime(ov_s_time);
 						write("Overall Run Time: " + ov_e_time[0] + "s, " + ov_e_time[1] + "ns");
 
-						saveLog(function(err){
-							cbFunc(err, data);
+						parseMTLFile(parsedObj, function(err, mObj){
+							if(err != -1){
+								rObj.material = mObj;
+							}
+
+							saveLog(function(err){
+								cbFunc(err, rObj);
+							});
 						});
 					});
 				});
@@ -1054,10 +1117,16 @@ function parseSync(file, options){
 	var ov_e_time = process.hrtime(ov_s_time);
 	write("Overall Run Time: " + ov_e_time[0] + "s, " + ov_e_time[1] + "ns");
 
-	saveLog();
-
 	var rData = {err: err, data: parsedObj};
 	if(json) rData.json = json;
+
+	var mData = parseMTLFile(parsedObj);
+
+	if(mData && mData.err != -1){
+		rData.material = mData;
+	}
+
+	saveLog();
 
 	return rData;
 }
