@@ -60,7 +60,7 @@ Options
 -------
 Is a js object that contains configurations for logging, saving JSON files, etc...
 
-parseComments - `bool` (default: `false`) - flag to retain comments when parsing the file.
+parseComments - `bool` (default: `false`) - flag to retain comments when parsing the file.<br />
 verbose - `bool` (default: `false`) - flag to write parsing details to the nodejs console.<br />
 logging - `bool` (default: `false`) - flag to write and save parsing details to a log file.<br />
 returnJSON - `bool` (default: `false`) - flag to have the a JSON string of the parsed object returned with the js object.<br />
