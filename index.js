@@ -1,6 +1,6 @@
 var fs = require("fs");
 var util = require("util");
-var mtl = require("mtltojs");
+//var mtl = require("mtltojs");
 var opts;
 var file_path = '';
 var file_name = '';
@@ -110,218 +110,255 @@ function parseText(text, cbFunc){
 		num_lines = lines.length;
 		
 		if(num_lines > 0){
-			data = {};
-			var obj = null;
+			data = [];
 			var line = null;
 			var c_type = null; // current type
 			var p_type = '';   // previous type
-			var isHeader = true;
-			var last_line = num_lines - 1;
+			var last_line = 2243;//num_lines - 1;
+			var stor_obj = null; // object with line data to be stored in the data array
+			var stor_val = null; // object to collect data from line parsing to be stored under the "value" property in stor_obj
+			var stor_type = null; // string of the verbose type of the line to be stored under the "type" property in stor_obj
 
 			for(var i = 0; i <= last_line; i++){
+				stor_type = '';
+				stor_val = null;
+
 				line = lines[i];
 
-				if(line == undefined || line == '' || line == null){
-					if(i == last_line && obj != null){
-						if(!data.objects){ data.objects = []; }
-						data.objects.push(obj);
-					}
-
-					continue;
-				}
-
-				if(line.charAt(0) == "#"){
-					if(isHeader){
-						if(!data.header){
-							data.header = [];
-						}
-
-						data.header.push(line);
-					}
-					else if(opts.parseComments == true){
-						if(obj == null){obj = {};}
-						if(!obj.comments){
-							obj.comments = [];
-						}
-
-						obj.comments.push(line);
-					}
-
-					continue;
-				}
+				if(line == undefined || line == '' || line == null) continue;
 
 				line = line.split(' ');
 
 				p_type = c_type;
 				c_type = line[0];
-				if(c_type) c_type = c_type.toLowerCase();
-				
-				if(c_type != p_type && (p_type == 'f' || p_type == 'l' || p_type == 'p' || p_type == 'end') && obj != null){
-					if(!data.objects){ data.objects = []; }
 
-					data.objects.push(obj);
-					obj = null;
-				}
+				if(c_type) c_type = c_type.toLowerCase();
+
+				stor_obj = {type: '', identifier:c_type, value:null};
 
 				switch(c_type){
+					case '#': // Comments
+						if(opts.parseComments && line.length > 1 && (line[1] != '' || line[1] != ' ')){
+							var c = line.length > 2 ? line.slice(1, line.length).join(' ') : line[1];
+							write("Parsing Comment: " + c);
+							stor_type = 'comment';
+							stor_val = c;
+						}
+						else{
+							continue;
+						}
+						break;
 					case 'mtllib': // Material Library
 						write("Parsing Materal lib file reference (mtlib): " + line[1]);
-						data.material_lib = line[1];
-						isHeader = false;
+						stor_type = 'material_lib';
+						stor_val = line[1];
 						break;
 					case 'usemtl': // Material name
 						write("Parsing Materal name (usemtl): " + line[1]);
-						obj.use_material = line[1];
+						stor_type = "materal name";
+						stor_val = line[1];
 						break;
 					case 'v':  // Geometric vertices
 					case 'vt': // Texture vertices
 					case 'vn': // Vertex normals
 					case 'vp': // Parameter space vertices
-						var which_v = null;
 						if(c_type == 'v'){
-							if(p_type != 'v') write("Parsing Geometric vertices (v)...");
-							which_v = 'geometric';
+							write("Parsing Geometric vertices (v)...");
+							stor_type = 'geometric';
 						}
 						else if(c_type == 'vt'){
-							if(p_type != 'vt') write("Parsing Texture vertices (vt)...");
-							which_v = 'texture';
+							write("Parsing Texture vertices (vt)...");
+							stor_type = 'texture';
 						}
 						else if(c_type == 'vn'){
-							if(p_type != 'vn') write("Parsing Vertex normals (vn)...");
-							which_v = "normals";
+							write("Parsing Vertex normals (vn)...");
+							stor_type = "normals";
 						}
 						else if(c_type == 'vp'){
-							if(p_type != 'vp') write("Parsing Parameter space vertices (vp)...");
-							which_v = "parameter_space";
+							write("Parsing Parameter space vertices (vp)...");
+							stor_type = "parameter space";
 						}
-
-						if(obj == null) obj = {};
-						if(!obj.vertices) obj.vertices = {};
-						if(!obj.vertices[which_v]) obj.vertices[which_v] = [];
 						
-						for(var v = 1; v < line.length; v++){
-							if(line[v] != null && line[v] != undefined && line[v] != ''){
-								obj.vertices[which_v].push(parseFloat(line[v]));
+						var vals = [];
+						var continued = false;
+
+						do{
+							for(var v = 1; v < line.length; v++){
+								if(line[v] != null && line[v] != undefined && line[v] != ''){
+									vals.push(parseFloat(line[v]));
+								}
 							}
-						}
+
+							if(lines[i+1].indexOf(c_type) == 0){
+								continued = true;
+								i++;
+								line = lines[i].split(' ');
+							}
+							else{
+								continued = false;	
+							}
+						}while(continued);
+
+						stor_val = vals;
 						break;
 					case 'p': //points
-						if(p_type != 'p') write("Paring Points (p)...");
-						if(!obj.point){obj.point = [];}
+						if(p_type != 'p') write("Parsing Points (p)...");
+						var vals = [];
 						for(var p = 1; p < line.length; p++){
 							if(line[p] == '\\'){
 								i++;
 								line = lines[i].split(' ');
 								p = 0;
 							}
-							obj.point.push(parseInt(line[p]));
+							vals.push(parseInt(line[p]));
 						}
+						stor_type = 'points';
+						stor_val = vals;
 						break;
 					case 'l': //lines
-						if(p_type != 'l') write("Parsing line vertex (l)...");
-						if(obj == null){obj = {};}
-						if(!obj.line) obj.line = {vertex: [], texture: null}
-						var vals = null;
-						var hasTxt = (line[1].indexOf('/') > -1);
-						if(hasTxt && obj.line.texture == null) obj.line.texture = [];
-						for(var l = 1; l < line.length; l++){
-							if(hasTxt){
-								vals = line[l].split('/');
-								obj.line.vertex.push(parseFloat(vals[0]));
-								obj.line.texture.push(parseFloat(vals[1]));
+						write("Parsing line vertex (l)...");
+						var val = {vertex: [], texture: hasTxtr ? [] : null};
+						var hasTxtr;
+						var vals;
+						var continued = false;
+						do{
+							hasTxtr = (line[1].indexOf('/') > -1);
+							for(var l = 1; l < line.length; l++){
+								if(hasTxtr){
+									vals = line[l].split('/');
+									val['vertex'].push(parseFloat(vals[0]));
+									val['texture'].push(parseFloat(vals[1]));
+								}
+								else{
+									val['vertex'].push(parseFloat(line[l]));
+								}
+							}
+
+							if(lines[i+1].indexOf('l') == 0){
+								continued = true;
+								i++;
+								line = lines[i].split(' ');
 							}
 							else{
-								obj.line.vertex.push(parseFloat(line[l]));
+								continued = false;
 							}
-						}
+						}while(continued);
+						
+						stor_type = 'line';
+						stor_val = val;
 						break;
 					case 'f': //faces
 						if(p_type != 'f') write("Parsing Faces (f)...");
-						if(obj == null) obj = {};
-						if(!obj.faces) obj.faces = {};
-						
-						for(var fData = 1; fData < line.length; fData++){
-							var faces = line[fData].indexOf('/') > -1 ? line[fData].split('/') : [line[fData]];
-							
-							for(var f = 0; f < faces.length; f++){
-								var faceData = faces[f];
+						var vals = {};
+						var continued = false;
 
-								if(faceData != null && faceData != undefined && faceData != ''){
-									faceData = parseInt(faceData);
+						do{
+							for(var fData = 1; fData < line.length; fData++){
+								var faces = line[fData].indexOf('/') > -1 ? line[fData].split('/') : [line[fData]];
+								
+								for(var f = 0; f < faces.length; f++){
+									var faceData = faces[f];
 
-									if(f == 0){
-										if(!obj.faces.vertex){obj.faces.vertex = [];}
-										obj.faces.vertex.push(faceData);
-									}
-									else if(f == 1){
-										if(!obj.faces.texture){obj.faces.texture = [];}
-										obj.faces.texture.push(faceData);
-									}
-									else if(f == 2){
-										if(!obj.faces.normal){obj.faces.normal = [];}
-										obj.faces.normal.push(faceData);
+									if(faceData != null && faceData != undefined && faceData != ''){
+										faceData = parseInt(faceData);
+
+										if(f == 0){
+											if(!vals['vertex']){vals['vertex'] = [];}
+											vals['vertex'].push(faceData);
+										}
+										else if(f == 1){
+											if(!vals['texture']){vals['texture'] = [];}
+											vals['texture'].push(faceData);
+										}
+										else if(f == 2){
+											if(!vals['normal']){vals['normal'] = [];}
+											vals['normal'].push(faceData);
+										}
 									}
 								}
 							}
-						}
+
+							if(lines[i + 1].indexOf('f') == 0){
+								continued = true;
+								i++;
+								line = lines[i].split(' ');
+							}
+							else{
+								continued = false;
+							}
+						}while(continued);
+				
+						stor_type = 'face';
+						stor_val = vals;
 						break;
 					case 'o': // Object name
-						write("Parsing Object (o): " + line[1]);
-						if(obj == null) obj = {};
-						obj.name = line[1];
+						var n = line.length > 2 ? line.slice(1, line.length).join(' ') : line[1];
+						write("Parsing Object (o): " + n);
+						stor_type = "object name";
+						stor_val = n;
 						break;
 					case 'g': // Group name
-						write("Parsing Group name (g)");
-						if(obj == null) obj = {};
-						obj.group = line.slice(1, line.length);
+						var n = line.length > 2 ? line.slice(1, line.length).join(' ') : line[1];
+						write("Parsing Group name (g): " + n);
+						stor_type = "group name";
+						stor_val = n;
 						break;
 					case 'mg': // Merging group
 						write("Parsing Merging group (mg)");
-						if(obj == null) obj = {};
-						obj.mergin_group = [
-							parseInt(line[1]), // Group number
-							parseFloat(line[2]) // resolution
-						];
+						var vals = {
+							group_num: parseInt(line[1]),
+							resolution: parseFloat(line[2])
+						};
+						stor_type = 'merging group';
+						stor_val = vals;
 						break;
 					case 's': // Smoothing Group
-						write("Parsing Smoothing Group (s)...");
-						obj.smoothing = line[1];
+						write("Parsing Smoothing Group (s): " + line[1]);
+						stor_type = "smoothing";
+						stor_val = line[1];
 						break;
 					case 'cstype': // Curve or Surface type
 						write("Parsing cstype...");
-						obj.cstype = {};
+						var vals = {};
 						if(line.length > 2){
-							obj.cstype.rat = line[1];
-							obj.cstype.type = line[2];
+							vals['rat'] = line[1];
+							vals['type'] = line[2];
 						} else{
-							obj.cstype.type = line[1];
+							vals['type'] = line[1];
 						}
+						stor_type = 'cstype';
+						stor_val = vals;
 						break;
 					case 'deg': // Degree
 					case 'step': // Step
-						write("Parsing " + (c_type == "deg" ? "Degrees" : "Step") + " (" + c_type + ")...");
-						obj[c_type] = [parseInt(line[1])];
+						var type = c_type == "deg" ? "Degrees" : "Step";
+						write("Parsing " + type + " (" + c_type + ")...");
+						var vals = []; // u,v
+						vals.push(parseInt(line[1]));
 						if(line.length > 2){
-							obj[c_type].push(parseInt(line[2]));
+							vals.push(parseInt(line[2]));
 						}
+						stor_type = type.toLowerCase();
+						stor_val = vals;
 						break;
 					case 'curv': // Curve
 						write("Parsing Curve (curv)...");
-						obj.curv = {u:null, v:[]};
-						obj.curv.u = [parseFloat(line[1]), parseFloat(line[2])]; //[start, end]
+						var vals = {u:null, v:[]};
+						vals['u'] = [parseFloat(line[1]), parseFloat(line[2])]; //[start, end]
 						for(var c = 3; c < line.length; c++){
 							if(line[c] == '\\'){
 								i++;
 								line = lines[i].split(' ');
 								c = 0;
 							}
-
-							obj.curv.v.push(parseInt(line[c]));
+							vals['v'].push(parseInt(line[c]));
 						}
+						stor_type = "curve";
+						stor_val = vals;
 						break;
 					case 'curv2': // 2D Curve
 						write("Parsing Curve 2D (curv2)...");
-						obj.curv2 = [];
+						var vals = [];
 						for(var c = 1; c < line.length; c++){
 							if(line[c] == '\\'){
 								i++;
@@ -329,28 +366,46 @@ function parseText(text, cbFunc){
 								c = 0;
 							}
 
-							obj.curv2.push(parseInt(line[c]));
+							vals.push(parseInt(line[c]));
 						}
+						stor_type = 'curve 2d';
+						stor_val = vals;
 						break;
 					case 'parm': // Global Parameters
 						write("Parsing Global Parameters (parm)...");
-						if(!obj.parm){obj.parm = {};}
-						var ptype = line[1]; // u or v
-						obj.parm[ptype] = [];
-						for(var p = 2; p < line.length; p++){
-							if(line[p] == '\\'){
+						var vals = {};
+						var uv;
+						var continued = false;
+						do{
+							uv = line[1]; // line[1] = u || v
+							vals[uv] = [];
+							for(var p = 2; p < line.length; p++){
+								if(line[p] == '\\'){
+									i++;
+									line = lines[i].split(' ');
+									p = 0;
+								}
+								vals[uv].push(parseFloat(line[p]));
+							}
+
+							if(lines[i+1].indexOf('parm') == 0){
+								continued = true;
 								i++;
 								line = lines[i].split(' ');
-								p = 0;
 							}
-							obj.parm[ptype].push(parseFloat(line[p]));
-						}
+							else{
+								continued = false;
+							}
+						}while(continued);
+						
+						stor_type = "global parameter";
+						stor_val = vals;
 						break;
 					case 'surf': // Surface
 						write("Parsing Surface (surf)...");
-						obj.surf = {u:null, v: null, vertices: null};
-						obj.surf.u = [parseFloat(line[1]), parseFloat(line[2])];
-						obj.surf.v = [parseFloat(line[3], parseFloat(line[4]))];
+						var vals = {u:null, v: null, vertices: null};
+						vals['u'] = [parseFloat(line[1]), parseFloat(line[2])];
+						vals['v'] = [parseFloat(line[3], parseFloat(line[4]))];
 						var ver = [];
 						var txt = null; // texture vertex
 						var nrm = null; // normals
@@ -373,59 +428,72 @@ function parseText(text, cbFunc){
 								nrm.push(parseFloat(verts[2]));
 							}
 						}
-						obj.surf.vertices = {vertex: ver, texture: txt, normals: nrm};
-
+						vals['vertices'] = {vertex: ver, texture: txt, normals: nrm};
+						stor_type = 'surface';
+						stor_val = vals;
 						break;
 					case 'trim': // Trimming loop
 					case 'hole': // Trimming loop (hole)
 					case 'scrv': // Special Curve
-						if(c_type == "scrv") write("Parsing Special Curve");
-						else write("Parsing Trimming Loop" + c_type == "hole" ? " (hole)" : "" + "...");
-						if(!obj[c_type]) obj[c_type] = [];
-						obj[c_type].push([parseFloat(line[1]), parseFloat(line[2]), parseInt(line[3])]);
+						if(c_type == "scrv"){
+							write("Parsing Special Curve");
+							stor_type = "special curve";
+						}
+						else{
+							write("Parsing Trimming Loop" + c_type == "hole" ? " (hole)" : "" + "...");
+							stor_type = "trimming loop";
+						}
+						stor_val = [parseFloat(line[1]), parseFloat(line[2]), parseInt(line[3])];
+						break;
+					case 'end': // end statement for curvs
+						write("Parsing End Statement...");
+						stor_type = "end";
 						break;
 					case 'sp': // Special Point
 						write("Parsing Special Point (sp)...");
-						obj['sp'] = [parseInt(line[1]), parseInt(line[2])];
+						stor_type = "special point";
+						stor_val = [parseInt(line[1]), parseInt(line[2])];
 						break;
 					case 'bmat': // basis matrix
 						var uv = line[1];
 						write("Parsing basis matrix " + uv + " (" + c_type + ")...");
-						if(!obj.deg || obj.deg.length < 2){
-							write("Error: No DEG value found, can't parse basis martix...");
-							break;
-						}
-						if(!obj[c_type]) obj[c_type] = {};
-						if(!obj[c_type][uv]) obj[c_type][uv] = [];
-						var matCt = obj.deg[uv == 'u' ? 0 : 1] + 1;
+						var vals = {uv: uv, values: []};
+						var continued = false;
+						
 						for(var b = 2; b < line.length; b++){
-							if(line[b] == "\\"){break;}
+							if(line[b] == "\\"){ // if last item is a \ there is more data on the next line
+								continued = true;
+								break;
+							}
 							if(line[b] != ''){
-								obj[c_type][uv].push(uv == 'u' ? parseInt(line[b]) : parseFloat(line[b]));
+								vals['values'].push(uv == 'u' ? parseInt(line[b]) : parseFloat(line[b]));
 							}	
 						}
-						matCt--;
-						matCt = matCt + i;
-						for(var bl = i + 1; bl <= matCt; bl++){
-							line = lines[bl];
-							if(line != undefined && line != ''){
-								line = line.split(' ');
-								var val = null;
-								for(var lIdx = 0; lIdx < line.length; lIdx++){
-									val = line[lIdx];
-									if(val != '' && val != '\\'){
-										obj[c_type][uv].push(uv == 'u' ? parseInt(val) : parseFloat(val));
-									}
-								}
+						
+						while(continued){
+							continued = false;
+							i++;
+							line = lines[i];
+							line = line.split(' ');
 
-								i++;
+							for(var v = 0; v < line.length; v++){
+								if(line[v] == "\\"){
+									continued = true;
+									break;
+								}
+								if(line[v] != ''){
+									vals['values'].push(uv == 'u' ? parseInt(line[v]) : parseFloat(line[v]));
+								} 
 							}
 						}
+
+						stor_type = "basis matrix";
+						stor_val = vals;
 						break;
 					case 'con': // Connectivity
 						write("Parsing Connectivity (con)...");
-						if(obj == null) obj = {};
-						obj.con = [
+						stor_type = "connectivity";
+						stor_val = [
 							parseInt(line[1]),   //Surface 1
 							parseFloat(line[2]), // Start of curve (surface 1)
 							parseFloat(line[3]), // End of curve (surface 1)
@@ -438,146 +506,158 @@ function parseText(text, cbFunc){
 						break;
 					case 'bevel': // Bevel Interpolation
 						write("Parsing Bevel (bevel)...");
-						if(obj == null) obj = {};
-						obj.bevel = line[1]; // on or off
+						stor_type = "bevel";
+						stor_val = line[1]; // on or off
 						break;
 					case 'c_interp': // Color Interpolation
-						write('Parseing Color Interplation (c_interp)...');
-						if(obj == null) obj = {};
-						obj.color_interp = line[1]; // on or off
+						write('Parseing Color Interpolation (c_interp)...');
+						stor_type = "color interpolation";
+						stor_val = line[1]; // on or off
 						break;
 					case 'd_interp': // Dissolve Interpolation
 						write("Parsing Dissolve Interpolation (d_interp)...");
-						if(obj == null) obj = {};
-						obj.dissolve_interp = line[1]; // on or off
+						stor_type = "dissolve interpolation";
+						stor_val = line[1]; // on or off
 						break;
 					case 'lod': // Level of Detail
 						write("Parsing Level of Detail (lod)...");
-						if(obj == null) obj = {};
-						obj.level_detail = parseInt(line[1]);
+						stor_type = "level of detail";
+						stor_val = parseInt(line[1]);
 						break;
 					case 'maplib': // Map Library
 						write("Parsing Map Library (maplib)...");
-						if(obj == null) obj = {};
-						obj.map_lib = line.slice(1, line.length);
+						stor_type = "map library";
+						stor_val = line.slice(1, line.length);
 						break;
 					case 'usemap': // Texture map
 						write("Parsing Texture Map (usemap)...");
-						if(obj == nul) obj = {};
-						obj.usemap = line[1]; // map name or off
+						stor_type = "texture map";
+						stor_val = line[1]; // map name or off
 						break;
 					case 'shadow_obj': //Shadow obj filename
 						write("Parsing Shadow obj filename (shadow_obj)...");
-						if(obj == null) obj = {};
-						obj.shadow_obj = line[1];
+						stor_type = "shadow object filename";
+						stor_val = line[1];
 						break;
 					case 'trace_obj': // Ray Tracing filename
 						write("Parsing Ray Tracing Filename (trace_obj)...");
-						obj.ray_trace_filename = line[1];
+						stor_type = "ray traceing filename";
+						stor_val = line[1];
 						break;
 					case 'ctech': // Curve approx Technique
 						write("Parsing Curve Approx Technique (ctech)...");
-						if(obj == null) obj = {};
-						obj.curve_tech = {technique: line[1]};
+						var vals = {technique: line[1]};
 						if(line.length > 3){
-							obj.curve_tech.max_dist = parseFloat(line[2]);
-							obj.curve_tech.max_angle = parseFloat(line[3]);
+							vals['max_dist'] = parseFloat(line[2]);
+							vals['max_angle'] = parseFloat(line[3]);
 						}
 						else{
 							if(line[1] == "cparm"){
-								obj.curve_tech.res = parseFloat(line[2]);
-							} else{
-								obj.curve_tech.max_len = parseInt(line[2]);
+								vals['res'] = parseFloat(line[2]);
+							} else {
+								vals['max_len'] = parseInt(line[2]);
 							}
 						}
+						stor_type = "curve approx technique";
+						stor_val = vals;
 						break;
 					case 'stech': // Surface Technique
 						write("Parseing Surface Technique (stech)...");
-						if(obj == null) obj = {};
-						obj.surface_tech = {technique: line[1]};
+						var vals = {technique: line[1]};
 						switch(line[1]){
 							case 'cparma':
-								obj.surface_tech.resolution =[
+								vals['resolution'] =[
 									parseFloat(line[2]), // U
 									parseFloat(line[3])  // V
 								];
 								break;
 							case 'cparmb':
-								obj.surface_tech.resolution = parseFloat(line[2]); // uv
+								vals['resolution'] = parseFloat(line[2]); // uv
 								break;
 							case 'cspace':
-								obj.surface_tech.max_len = parseInt(line[2]); // max length
+								vals['max_len'] = parseInt(line[2]); // max length
 								break;
 							case 'curv':
-								obj.surface_tech.max_dist = parseFloat(line[2]); // max distance
-								obj.surface_tech.max_angle = parseFloat(line[3]); // max angle
+								vals['max_dist'] = parseFloat(line[2]); // max distance
+								vals['max_angle'] = parseFloat(line[3]); // max angle
 								break;
 						}
+						stor_type = "surface technique";
+						stor_val = vals;
 						break;
 					case 'bsp': // B-spline patch
 						write("Parsing B-Spline Patch (bsp)...");
-						if(obj == null) obj = {};
-						obj.b_spline_patch = [];
+						var vals = [];
 						for(var b = 1; b < line.length; b++){
 							if(line[b] == '\\'){
 								i++;
 								line = lines[i].split(' ');
 								b = 0;
 							}
-							obj.b_spline_patch.push(parseInt(line[b]));
+							vals.push(parseInt(line[b]));
 						}
+						stor_type = "b-spline patch";
+						stor_val = vals;
 						break;
 					case 'bzp': // Bezier Patch
 						write("Parsing Bezier Patch (bzp)...");
-						if(obj == null) obj = {};
-						obj.bezier_patch = [];
+						var vals = [];
 						for(var b = 1; b < line.length; b++){
 							if(line[b] == '\\'){
 								i++;
 								line = lines[i].split(' ');
 								b = 0;
 							}
-							obj.bezier_patch.push(parseInt(line[b]));
+							vals.push(parseInt(line[b]));
 						}
+						stor_type = "bezier patch";
+						stor_val = vals;
 						break;
 					case 'cdc': // Cardinal Curve Patch
 						write("Parsing Cardinal Curve Patch (cdc)...");
-						if(obj == null) obj = {};
-						obj.cardinal_curv_patch = [];
+						var vals = [];
 						for(var c = 1; c < line.length; c++){
 							if(line[c] == '\\'){
 								i++;
 								line = lines[i].split(' ');
 								c = 0;
 							}
-							obj.cardinal_curv_patch.push(parseInt(line[c]));
+							vals.push(parseInt(line[c]));
 						}
+						stor_type = "cardinal curve patch";
+						stor_val = vals;
 						break;
 					case 'cdp': // Cardinal Patch
 						write("Parsing Cardinal Patch (cdp)...");
-						if(obj == null) obj = {};
-						obj.cardinal_patch = [];
+						var vals = [];
 						for(var c = 1; c < line.length; c++){
 							if(line[c] == '\\'){
 								i++;
 								line = lines[i].split(' ');
 								c = 0;
 							}
-							obj.cardinal_patch.push(parseInt(line[c]));
+							vals.push(parseInt(line[c]));
 						}
+						stor_type = "cardinal patch";
+						stor_val = vals;
 						break;
 					case 'res': // Reference
 						write('Parsing Reference (res)...');
-						if(obj == null) obj = {};
-						obj.reference = {
+						stor_type = "reference";
+						stor_val = {
 							useg: parseInt(line[1]),
 							vseg: parseInt(line[2])
 						}
 						break;
 					default:
 						write("Unprocessed Line: (#" + i + ") " + lines[i]);
-				}
-			}
+						stor_type = 'unprocessed';
+				} // end switch
+
+				stor_obj['type'] = stor_type;
+				stor_obj['value'] = stor_val;
+				data.push(stor_obj); //push next line object from file to the data array... values for stor_obj are set in switch statement.
+			} // end for loop
 		}
 		else{
 			err = "Error: Can not split file data into lines.";
@@ -858,9 +938,7 @@ function processJSON(data, cbFunc){
 						}
 						else{
 							write("JSON saved to file " + jsonFile);
-							saveJSON(data.objects, 0, function(){
-								cbFunc(err, opts.returnJSON ? json : null);
-							});
+							cbFunc(err, opts.returnJSON ? json : null);
 						}
 					});
 				}
@@ -868,18 +946,6 @@ function processJSON(data, cbFunc){
 					try{
 						fs.writeFileSync(jsonFile, json);
 						write("JSON saved to file " + jsonFile);
-
-						for(var o = 0; o < data.objects.length; o++){
-							jsonFile = save_path + data.objects[o].name + ".json";
-							json = JSON.stringify(data.objects[o]);
-							try{
-								fs.writeFileSync(jsonFile, json);
-								write("Saved JSON: " + jsonFile);
-							}
-							catch(e){
-								write("Error: Can not save JSON file: " + jsonFile + " | " + e);
-							}
-						}
 					}
 					catch(e){
 						write("Error: Can not save JSON file: " + e);
@@ -897,29 +963,6 @@ function processJSON(data, cbFunc){
 	else{
 		if(isAsync){cbFunc(0, null);}
 		else{return null;}
-	}
-}
-
-function saveJSON(data, idx, cbFunc){
-	if(idx < data.length){
-		var jFile = save_path + data[idx].name + ".json";
-		var json = JSON.stringify(data[idx]);
-		fs.writeFile(jFile, json, function(err){
-			if(err){
-				write("Error: Saving JSON file: " + jFile + ", " + err);
-			}
-			else{
-				write("Saved JSON: " + jFile);
-			}
-
-			idx++;
-			if(idx < data.length){
-				saveJSON(data,idx, cbFunc);
-			}
-			else{
-				cbFunc();
-			}
-		});
 	}
 }
 
