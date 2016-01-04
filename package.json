@@ -1,6 +1,6 @@
 {
   "name": "objtojs",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "nodejs module to parse WaveFront Object (.obj) files to javascript and/or JSON",
   "main": "index.js",
   "scripts": {

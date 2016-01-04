@@ -1,6 +1,6 @@
 var fs = require("fs");
 var util = require("util");
-//var mtl = require("mtltojs");
+var mtl = require("mtltojs");
 var opts;
 var file_path = '';
 var file_name = '';
