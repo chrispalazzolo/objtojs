@@ -6,6 +6,7 @@ var file_path = '';
 var file_name = '';
 var file_ext = '';
 var save_path = '';
+var mtl_lib_file = '';
 var log = [];
 
 function parseFile(file, cbFunc){
@@ -148,6 +149,7 @@ function parseText(text, cbFunc){
 						break;
 					case 'mtllib': // Material Library
 						write("Parsing Materal lib file reference (mtlib): " + line[1]);
+						mtl_lib_file = line[1];
 						stor_type = 'material_lib';
 						stor_val = line[1];
 						break;
@@ -1040,7 +1042,7 @@ function parseMTLFile(data, cbFunc){
 	var isAsync = isCallbackFunc(cbFunc);
 	var rObj = {err:'', data: null}; //return object
 	if(opts.parseMTLFile == true){
-		var file = data.material_lib;
+		var file = mtl_lib_file;
 		write("Starting of parsing of Material file '" + file + "'...");
 		if(file){
 			file = file_path + file;
