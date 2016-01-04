@@ -113,8 +113,7 @@ function parseText(text, cbFunc){
 			data = [];
 			var line = null;
 			var c_type = null; // current type
-			var p_type = '';   // previous type
-			var last_line = 2243;//num_lines - 1;
+			var last_line = num_lines - 1;
 			var stor_obj = null; // object with line data to be stored in the data array
 			var stor_val = null; // object to collect data from line parsing to be stored under the "value" property in stor_obj
 			var stor_type = null; // string of the verbose type of the line to be stored under the "type" property in stor_obj
@@ -127,14 +126,13 @@ function parseText(text, cbFunc){
 
 				if(line == undefined || line == '' || line == null) continue;
 
-				line = line.split(' ');
+				line = processLine(line);
 
-				p_type = c_type;
 				c_type = line[0];
 
 				if(c_type) c_type = c_type.toLowerCase();
 
-				stor_obj = {type: '', identifier:c_type, value:null};
+				stor_obj = {type: '', keyword:c_type, value:null};
 
 				switch(c_type){
 					case '#': // Comments
@@ -180,38 +178,50 @@ function parseText(text, cbFunc){
 						}
 						
 						var vals = [];
-						var continued = false;
+						var continued;
 
 						do{
+							continued = false;
 							for(var v = 1; v < line.length; v++){
 								if(line[v] != null && line[v] != undefined && line[v] != ''){
 									vals.push(parseFloat(line[v]));
 								}
 							}
 
-							if(lines[i+1].indexOf(c_type) == 0){
-								continued = true;
-								i++;
-								line = lines[i].split(' ');
-							}
-							else{
-								continued = false;	
+							if(i != last_line){
+								line = processLine(lines[i+1]);
+								if(line[0] == c_type){
+									continued = true;
+									i++;
+								}
 							}
 						}while(continued);
 
 						stor_val = vals;
 						break;
 					case 'p': //points
-						if(p_type != 'p') write("Parsing Points (p)...");
+						write("Parsing Points (p)...");
 						var vals = [];
-						for(var p = 1; p < line.length; p++){
-							if(line[p] == '\\'){
-								i++;
-								line = lines[i].split(' ');
-								p = 0;
+						var continued;
+
+						do{
+							continued = false;
+							for(var p = 1; p < line.length; p++){
+								if(line[p] == '\\'){
+									i++;
+									line = processLine(lines[i]);
+									p = 0;
+								}
+								vals.push(parseInt(line[p]));
 							}
-							vals.push(parseInt(line[p]));
-						}
+
+							if(i != last_line && lines[i+1].indexOf('p') == 0){
+								continued = true;
+								i++;
+								line = processLine(lines[i]);
+							}
+						}while(continued);
+						
 						stor_type = 'points';
 						stor_val = vals;
 						break;
@@ -220,8 +230,9 @@ function parseText(text, cbFunc){
 						var val = {vertex: [], texture: hasTxtr ? [] : null};
 						var hasTxtr;
 						var vals;
-						var continued = false;
+						var continued;
 						do{
+							continued = false;
 							hasTxtr = (line[1].indexOf('/') > -1);
 							for(var l = 1; l < line.length; l++){
 								if(hasTxtr){
@@ -234,13 +245,10 @@ function parseText(text, cbFunc){
 								}
 							}
 
-							if(lines[i+1].indexOf('l') == 0){
+							if(i != last_line && lines[i+1].indexOf('l') == 0){
 								continued = true;
 								i++;
-								line = lines[i].split(' ');
-							}
-							else{
-								continued = false;
+								line = processLine(lines[i]);
 							}
 						}while(continued);
 						
@@ -248,11 +256,12 @@ function parseText(text, cbFunc){
 						stor_val = val;
 						break;
 					case 'f': //faces
-						if(p_type != 'f') write("Parsing Faces (f)...");
+						write("Parsing Faces (f)...");
 						var vals = {};
-						var continued = false;
+						var continued;
 
 						do{
+							continued = false;
 							for(var fData = 1; fData < line.length; fData++){
 								var faces = line[fData].indexOf('/') > -1 ? line[fData].split('/') : [line[fData]];
 								
@@ -278,13 +287,10 @@ function parseText(text, cbFunc){
 								}
 							}
 
-							if(lines[i + 1].indexOf('f') == 0){
+							if(i != last_line && lines[i + 1].indexOf('f') == 0){
 								continued = true;
 								i++;
-								line = lines[i].split(' ');
-							}
-							else{
-								continued = false;
+								line = processLine(lines[i]);
 							}
 						}while(continued);
 				
@@ -318,7 +324,7 @@ function parseText(text, cbFunc){
 						stor_val = line[1];
 						break;
 					case 'cstype': // Curve or Surface type
-						write("Parsing cstype...");
+						write("Parsing cstype (" + c_type + ")...");
 						var vals = {};
 						if(line.length > 2){
 							vals['rat'] = line[1];
@@ -333,10 +339,10 @@ function parseText(text, cbFunc){
 					case 'step': // Step
 						var type = c_type == "deg" ? "Degrees" : "Step";
 						write("Parsing " + type + " (" + c_type + ")...");
-						var vals = []; // u,v
-						vals.push(parseInt(line[1]));
+						var vals = {};
+						vals['u'] = parseInt(line[1]);
 						if(line.length > 2){
-							vals.push(parseInt(line[2]));
+							vals['v'] = parseInt(line[2]);
 						}
 						stor_type = type.toLowerCase();
 						stor_val = vals;
@@ -346,9 +352,9 @@ function parseText(text, cbFunc){
 						var vals = {u:null, v:[]};
 						vals['u'] = [parseFloat(line[1]), parseFloat(line[2])]; //[start, end]
 						for(var c = 3; c < line.length; c++){
-							if(line[c] == '\\'){
+							if(line[c] == '\\' && i != last_line){
 								i++;
-								line = lines[i].split(' ');
+								line = processLine(lines[i]);
 								c = 0;
 							}
 							vals['v'].push(parseInt(line[c]));
@@ -360,9 +366,9 @@ function parseText(text, cbFunc){
 						write("Parsing Curve 2D (curv2)...");
 						var vals = [];
 						for(var c = 1; c < line.length; c++){
-							if(line[c] == '\\'){
+							if(line[c] == '\\' && i != last_line){
 								i++;
-								line = lines[i].split(' ');
+								line = processLine(lines[i]);
 								c = 0;
 							}
 
@@ -375,26 +381,24 @@ function parseText(text, cbFunc){
 						write("Parsing Global Parameters (parm)...");
 						var vals = {};
 						var uv;
-						var continued = false;
+						var continued;
 						do{
+							continued = false;
 							uv = line[1]; // line[1] = u || v
 							vals[uv] = [];
 							for(var p = 2; p < line.length; p++){
-								if(line[p] == '\\'){
+								if(line[p] == '\\' && i != last_line){
 									i++;
-									line = lines[i].split(' ');
+									line = processLine(lines[i]);
 									p = 0;
 								}
 								vals[uv].push(parseFloat(line[p]));
 							}
 
-							if(lines[i+1].indexOf('parm') == 0){
+							if(i != last_line && lines[i+1].indexOf('parm') == 0){
 								continued = true;
 								i++;
-								line = lines[i].split(' ');
-							}
-							else{
-								continued = false;
+								line = processLine(lines[i]);
 							}
 						}while(continued);
 						
@@ -411,9 +415,9 @@ function parseText(text, cbFunc){
 						var nrm = null; // normals
 						var verts;
 						for(var v = 5; v < line.length; v++){
-							if(line[v] == '\\'){
+							if(line[v] == '\\' && i != last_line){
 								i++;
-								line = lines[i].split(' ');
+								line = processLine(lines[i]);
 								v = 0;
 							}
 							verts = line[v];
@@ -455,37 +459,35 @@ function parseText(text, cbFunc){
 						stor_val = [parseInt(line[1]), parseInt(line[2])];
 						break;
 					case 'bmat': // basis matrix
-						var uv = line[1];
-						write("Parsing basis matrix " + uv + " (" + c_type + ")...");
-						var vals = {uv: uv, values: []};
-						var continued = false;
+						var uv;
+						var vals = {};
+						var continued;
+						var s_idx = 2;
 						
-						for(var b = 2; b < line.length; b++){
-							if(line[b] == "\\"){ // if last item is a \ there is more data on the next line
-								continued = true;
-								break;
-							}
-							if(line[b] != ''){
-								vals['values'].push(uv == 'u' ? parseInt(line[b]) : parseFloat(line[b]));
-							}	
-						}
-						
-						while(continued){
+						do{
 							continued = false;
-							i++;
-							line = lines[i];
-							line = line.split(' ');
+							uv = line[1];
+							vals[uv] = [];
+							write("Parsing basis matrix (" + c_type + ")...");
 
-							for(var v = 0; v < line.length; v++){
-								if(line[v] == "\\"){
-									continued = true;
-									break;
+							for(var b = s_idx; b < line.length; b++){
+								if(line[b] == "\\" && i != last_line){ // if last item is a \ there is more data on the next line
+									i++;
+									line = processLine(lines[i]);
+									b = -1;
 								}
-								if(line[v] != ''){
-									vals['values'].push(uv == 'u' ? parseInt(line[v]) : parseFloat(line[v]));
-								} 
+								else{
+									vals[uv].push(uv == 'u' ? parseInt(line[b]) : parseFloat(line[b]));
+								}	
 							}
-						}
+							
+							if(i != last_line && lines[i+1].indexOf('bmat') == 0){ // if bmat found it is for the v values
+								continued = true;
+								s_idx = 2; // [0] = identifier, [1] = u or v, [2] = start of values
+								i++;
+								line = processLine(lines[i]);
+							}
+						}while(continued);
 
 						stor_type = "basis matrix";
 						stor_val = vals;
@@ -589,9 +591,9 @@ function parseText(text, cbFunc){
 						write("Parsing B-Spline Patch (bsp)...");
 						var vals = [];
 						for(var b = 1; b < line.length; b++){
-							if(line[b] == '\\'){
+							if(line[b] == '\\' && i != last_line){
 								i++;
-								line = lines[i].split(' ');
+								line = processLine(lines[i]);
 								b = 0;
 							}
 							vals.push(parseInt(line[b]));
@@ -603,9 +605,9 @@ function parseText(text, cbFunc){
 						write("Parsing Bezier Patch (bzp)...");
 						var vals = [];
 						for(var b = 1; b < line.length; b++){
-							if(line[b] == '\\'){
+							if(line[b] == '\\' && i != last_line){
 								i++;
-								line = lines[i].split(' ');
+								line = processLine(lines[i]);
 								b = 0;
 							}
 							vals.push(parseInt(line[b]));
@@ -617,9 +619,9 @@ function parseText(text, cbFunc){
 						write("Parsing Cardinal Curve Patch (cdc)...");
 						var vals = [];
 						for(var c = 1; c < line.length; c++){
-							if(line[c] == '\\'){
+							if(line[c] == '\\' && i != last_line){
 								i++;
-								line = lines[i].split(' ');
+								line = processLine(lines[i]);
 								c = 0;
 							}
 							vals.push(parseInt(line[c]));
@@ -631,9 +633,9 @@ function parseText(text, cbFunc){
 						write("Parsing Cardinal Patch (cdp)...");
 						var vals = [];
 						for(var c = 1; c < line.length; c++){
-							if(line[c] == '\\'){
+							if(line[c] == '\\' && i != last_line){
 								i++;
-								line = lines[i].split(' ');
+								line = processLine(lines[i]);
 								c = 0;
 							}
 							vals.push(parseInt(line[c]));
@@ -650,8 +652,20 @@ function parseText(text, cbFunc){
 						}
 						break;
 					default:
-						write("Unprocessed Line: (#" + i + ") " + lines[i]);
-						stor_type = 'unprocessed';
+						if(c_type.indexOf('#') == 0){ // possible comment without a space after the '#'
+							if(opts.parseComments){
+								line[0] = line[0].replace('#', '');
+								var c = line.join(' ');
+								write("Parsing Comment: " + c);
+								stor_obj['keyword'] = '#';
+								stor_type = "comment";
+								stor_val = c;
+							}
+						}
+						else{
+							write("!!! Unprocessed Line @ " + i + ": " + lines[i]);
+							stor_type = 'unprocessed';
+						}
 				} // end switch
 
 				stor_obj['type'] = stor_type;
@@ -679,6 +693,12 @@ function parseText(text, cbFunc){
 	} else{
 		return {err: err, data: data};
 	}
+}
+
+function processLine(str){
+	str = str.replace(/\s\s+/g, ' ');
+	str = str.trim();
+	return str.split(' ');
 }
 
 function OpenFile(file, option, cbFunc){
